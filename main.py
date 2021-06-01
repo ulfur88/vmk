@@ -234,11 +234,11 @@ def main(args):
     #banner()
 
     # create queue
-    queue = queue.Queue(32)
+    q = queue.Queue(32)
 
     # create threads
-    comm = CommunicationThread(queue)
-    data = DataThread(queue)
+    comm = CommunicationThread(q)
+    data = DataThread(q)
 
     # start threads
     comm.start()
@@ -249,16 +249,18 @@ def main(args):
     data.join()
 
     # start threads of the next step
-    extract_metadata(drive)
+    #extract_metadata(drive)
 
+    # decrypt the key
+    #fvekdecrypt()
 
 
 # main program
 if __name__ == '__main__':
     # init command line parser
-    #parser = argparse.ArgumentParser("./bitlocker_key_decryptor.py")
-    parser.add_argument('-d', '--drive', type=str, required=True, help='File with dislocker-metadata output of targeted BitLocker-encrypted partition')
-    parser.add_argument('-k', '--keyfile', type=str, required=True, help='File with sniffed BitLocker Volume Master Key (VMK)')
+    parser = argparse.ArgumentParser("./nameofscript.py")
+    parser.add_argument('-d', '--drive', type=str, required=True, help='The Bitlocker Encrypted drive. Usually located in /dev and has the identifier sxxy where x are letters and y a number. Select the encrypted partition')
+    #parser.add_argument('-k', '--keyfile', type=str, required=True, help='File with sniffed BitLocker Volume Master Key (VMK)')
 
     # parse command line arguments
     args = parser.parse_args()
